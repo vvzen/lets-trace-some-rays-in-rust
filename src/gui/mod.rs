@@ -6,6 +6,7 @@ use pixels::{wgpu, PixelsContext};
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::Window;
 
+pub mod app;
 pub mod constants;
 pub mod image;
 
@@ -26,7 +27,7 @@ pub(crate) struct Framework {
     gui: Gui,
 }
 
-/// Example application state. A real application will need a lot more state than this.
+/// State for the GUI
 struct Gui {
     scale_factor: f32,
     // UI options
