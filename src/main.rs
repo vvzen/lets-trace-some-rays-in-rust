@@ -1,6 +1,8 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
+use std::sync::{Arc, Mutex};
+
 use log::error;
 use pixels::{wgpu, Error, PixelsBuilder, SurfaceTexture};
 use winit::dpi::LogicalSize;
@@ -12,9 +14,8 @@ use winit_input_helper::WinitInputHelper;
 mod gui;
 mod ltsr;
 
-use crate::gui::app::ApplicationState;
 use crate::gui::constants::{
-    RENDER_BUFFER_HEIGHT, RENDER_BUFFER_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
+    RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use crate::gui::Framework;
 
@@ -32,13 +33,9 @@ fn main() -> Result<(), Error> {
             .unwrap()
     };
 
-    let mut app = ApplicationState::new();
-
-    let render_buffer_pointer = Box::new(app.framebuffer);
-    println!(
-        "Render buffer occupies {} bytes on the stack",
-        std::mem::size_of_val(&render_buffer_pointer)
-    );
+    // This will store the image that we draw, it's allocated on the heap
+    // The mutex protects the data, the Arc helps share the memory across threads
+    let render_buffer = Arc::new(Mutex::new(vec![1.0; RENDER_BUFFER_SIZE]));
 
     let (mut pixels, mut framework) = {
         let window_size = window.inner_size();
@@ -57,7 +54,7 @@ fn main() -> Result<(), Error> {
             window_size.height,
             scale_factor,
             &pixels,
-            render_buffer_pointer,
+            render_buffer,
         );
 
         (pixels, framework)
@@ -88,7 +85,7 @@ fn main() -> Result<(), Error> {
             }
 
             // Update internal state and request a redraw
-            app.update();
+            framework.app.update();
             window.request_redraw();
         }
 
@@ -100,7 +97,7 @@ fn main() -> Result<(), Error> {
             // Draw the current frame
             Event::RedrawRequested(_) => {
                 // Draw the world
-                app.draw(pixels.get_frame_mut());
+                framework.app.draw(pixels.get_frame_mut());
 
                 // Prepare egui
                 framework.prepare(&window);

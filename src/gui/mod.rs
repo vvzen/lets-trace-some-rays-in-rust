@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use egui::{ClippedPrimitive, Context, TexturesDelta};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
@@ -10,6 +11,7 @@ pub mod app;
 pub mod constants;
 pub mod image;
 
+use crate::gui::app::ApplicationState;
 use crate::gui::constants::{RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH};
 use crate::gui::image::write_as_exr_image;
 
@@ -23,29 +25,14 @@ pub(crate) struct Framework {
     paint_jobs: Vec<ClippedPrimitive>,
     textures: TexturesDelta,
 
+    // ....
+    // render_buffer: &'f Vec<f32>,
+
     // State for the GUI
     gui: Gui,
-}
 
-/// State for the GUI
-struct Gui {
-    scale_factor: f32,
-    // UI options
-    window_open: bool,
-    should_rerender: bool,
-    window_width: u32,
-    window_height: u32,
-    file_path: String,
-    color_a: [u8; 4],
-    color_b: [u8; 4],
-    file_format_chosen: FileFormat,
-    // Pointers
-    render_buffer_pointer: Box<[f32; RENDER_BUFFER_SIZE]>,
-}
-
-#[derive(Debug, PartialEq)]
-enum FileFormat {
-    OpenEXR,
+    // State for the Application
+    pub app: ApplicationState,
 }
 
 impl Framework {
@@ -56,7 +43,7 @@ impl Framework {
         height: u32,
         scale_factor: f32,
         pixels: &pixels::Pixels,
-        render_buffer: Box<[f32; RENDER_BUFFER_SIZE]>,
+        render_buffer: Arc<Mutex<Vec<f32>>>,
     ) -> Self {
         let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
 
@@ -70,7 +57,9 @@ impl Framework {
         };
         let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1);
         let textures = TexturesDelta::default();
-        let gui = Gui::new(width, height, scale_factor, render_buffer);
+
+        let app = ApplicationState::new(render_buffer.clone());
+        let gui = Gui::new(width, height, scale_factor, render_buffer.clone());
 
         Self {
             egui_ctx,
@@ -80,6 +69,7 @@ impl Framework {
             paint_jobs: Vec::new(),
             textures,
             gui,
+            app,
         }
     }
 
@@ -161,13 +151,29 @@ impl Framework {
     }
 }
 
+/// State for the GUI
+struct Gui {
+    scale_factor: f32,
+    // UI options
+    window_open: bool,
+    should_rerender: bool,
+    window_width: u32,
+    window_height: u32,
+    file_path: String,
+    color_a: [u8; 4],
+    color_b: [u8; 4],
+    file_format_chosen: FileFormat,
+    //
+    render_buffer: Arc<Mutex<Vec<f32>>>,
+}
+
 impl Gui {
     /// Create a `Gui`.
     fn new(
         width: u32,
         height: u32,
         scale_factor: f32,
-        render_buf_p: Box<[f32; RENDER_BUFFER_SIZE]>,
+        render_buffer: Arc<Mutex<Vec<f32>>>,
     ) -> Self {
         Self {
             window_open: true,
@@ -179,7 +185,7 @@ impl Gui {
             color_b: [0xff, 0xff, 0xff, 0xff],
             scale_factor,
             file_format_chosen: FileFormat::OpenEXR,
-            render_buffer_pointer: render_buf_p,
+            render_buffer,
         }
     }
 
@@ -264,11 +270,14 @@ impl Gui {
                     // Assume exr, for now :)
                     let image_path = root_dir.join(format!("{}.exr", self.file_path));
 
+                    // TODO: use try_lock
+                    let buffer_data = self.render_buffer.lock().unwrap();
+
                     match write_as_exr_image(
                         &image_path,
                         RENDER_BUFFER_WIDTH as usize,
                         RENDER_BUFFER_HEIGHT as usize,
-                        &self.render_buffer_pointer,
+                        &buffer_data,
                     ) {
                         Ok(_) => {
                             eprintln!("Image saved to {}", image_path.display());

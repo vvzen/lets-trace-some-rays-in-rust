@@ -51,7 +51,7 @@ pub fn render_bg_image(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
     }
 }
 
-pub fn render_scene(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
+pub fn render_scene(render_buffer: &mut Vec<f32>) {
     // Shorthands
     let image_width = RENDER_BUFFER_WIDTH as f32;
     let image_height = RENDER_BUFFER_HEIGHT as f32;
@@ -103,6 +103,8 @@ pub fn render_scene(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
                 color::acescg::<colstodian::Scene>(pixel_color.x, pixel_color.y, pixel_color.z);
 
             // R, G, B, A
+            // Accessing the indexes directly is safe
+            // because we pre-fill the vector before hand
             render_buffer[index + 0] = rendered_color.r;
             render_buffer[index + 1] = rendered_color.g;
             render_buffer[index + 2] = rendered_color.b;
@@ -117,7 +119,7 @@ pub fn write_as_exr_image(
     image_path: impl AsRef<Path>,
     width: usize,
     height: usize,
-    render_buffer: &Box<[f32; RENDER_BUFFER_SIZE]>,
+    render_buffer: &Vec<f32>,
 ) -> anyhow::Result<()> {
     let resolution = (width, height);
 
