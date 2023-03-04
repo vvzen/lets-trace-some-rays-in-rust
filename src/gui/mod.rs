@@ -1,5 +1,6 @@
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
 
 use egui::{ClippedPrimitive, Context, TexturesDelta};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
@@ -12,8 +13,15 @@ pub mod constants;
 pub mod image;
 
 use crate::gui::app::ApplicationState;
-use crate::gui::constants::{RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH};
+use crate::gui::constants::{RENDER_BUFFER_HEIGHT, RENDER_BUFFER_WIDTH};
+use crate::gui::image::render_scene;
 use crate::gui::image::write_as_exr_image;
+
+/// Enumeration of the supported file formats
+#[derive(Debug, PartialEq)]
+enum FileFormat {
+    OpenEXR,
+}
 
 /// Manages all state required for rendering egui over `Pixels`.
 pub(crate) struct Framework {
@@ -25,14 +33,8 @@ pub(crate) struct Framework {
     paint_jobs: Vec<ClippedPrimitive>,
     textures: TexturesDelta,
 
-    // ....
-    // render_buffer: &'f Vec<f32>,
-
     // State for the GUI
     gui: Gui,
-
-    // State for the Application
-    pub app: ApplicationState,
 }
 
 impl Framework {
@@ -58,7 +60,6 @@ impl Framework {
         let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1);
         let textures = TexturesDelta::default();
 
-        let app = ApplicationState::new(render_buffer.clone());
         let gui = Gui::new(width, height, scale_factor, render_buffer.clone());
 
         Self {
@@ -69,7 +70,6 @@ impl Framework {
             paint_jobs: Vec::new(),
             textures,
             gui,
-            app,
         }
     }
 
@@ -156,14 +156,13 @@ struct Gui {
     scale_factor: f32,
     // UI options
     window_open: bool,
-    should_rerender: bool,
     window_width: u32,
     window_height: u32,
     file_path: String,
     color_a: [u8; 4],
     color_b: [u8; 4],
     file_format_chosen: FileFormat,
-    //
+    // Shared across threads
     render_buffer: Arc<Mutex<Vec<f32>>>,
 }
 
@@ -177,7 +176,6 @@ impl Gui {
     ) -> Self {
         Self {
             window_open: true,
-            should_rerender: false,
             window_width: width,
             window_height: height,
             file_path: String::new(),
@@ -220,8 +218,23 @@ impl Gui {
                 ui.separator();
 
                 if ui.button("Render").clicked() {
-                    self.should_rerender = true;
-                    eprintln!("Re-rendering...");
+                    // let mut app = self.app_state.lock().unwrap();
+                    eprintln!("On 'Render' click received..");
+
+                    let render_buffer_p = self.render_buffer.clone();
+
+                    let handle = thread::spawn(move || {
+                        eprintln!("Started rendering..");
+                        let mut buffer_data = render_buffer_p.lock().unwrap();
+
+                        render_scene(&mut buffer_data);
+                        eprintln!("Finished rendering..");
+
+                        // TODO: tell the ApplicationState to update the pixels
+                        // Should I use https://doc.rust-lang.org/stable/std/sync/mpsc/index.html ?
+                    });
+
+                    handle.join().unwrap();
                 }
 
                 ui.separator();

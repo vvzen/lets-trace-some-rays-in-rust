@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use log::error;
 use pixels::{wgpu, Error, PixelsBuilder, SurfaceTexture};
@@ -14,6 +14,7 @@ use winit_input_helper::WinitInputHelper;
 mod gui;
 mod ltsr;
 
+use crate::gui::app::ApplicationState;
 use crate::gui::constants::{
     RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
@@ -37,6 +38,12 @@ fn main() -> Result<(), Error> {
     // The mutex protects the data, the Arc helps share the memory across threads
     let render_buffer = Arc::new(Mutex::new(vec![1.0; RENDER_BUFFER_SIZE]));
 
+    // Holds the current application state
+    // TODO:
+    // - What the heck does it mean, practically speaking?
+    // - What state should we store in the Gui, and what state in the App ?
+    let mut app_state = ApplicationState::new(render_buffer.clone());
+
     let (mut pixels, mut framework) = {
         let window_size = window.inner_size();
         let scale_factor = window.scale_factor() as f32;
@@ -54,7 +61,7 @@ fn main() -> Result<(), Error> {
             window_size.height,
             scale_factor,
             &pixels,
-            render_buffer,
+            render_buffer.clone(),
         );
 
         (pixels, framework)
@@ -68,6 +75,8 @@ fn main() -> Result<(), Error> {
                 *control_flow = ControlFlow::Exit;
                 return;
             }
+
+            // eprintln!("Received new event: {event:#?}");
 
             // Update the scale factor
             if let Some(scale_factor) = input.scale_factor() {
@@ -85,7 +94,8 @@ fn main() -> Result<(), Error> {
             }
 
             // Update internal state and request a redraw
-            framework.app.update();
+            app_state.update();
+
             window.request_redraw();
         }
 
@@ -96,8 +106,10 @@ fn main() -> Result<(), Error> {
             }
             // Draw the current frame
             Event::RedrawRequested(_) => {
+                // eprintln!("Redraw requested!");
+
                 // Draw the world
-                framework.app.draw(pixels.get_frame_mut());
+                app_state.draw(pixels.get_frame_mut());
 
                 // Prepare egui
                 framework.prepare(&window);
