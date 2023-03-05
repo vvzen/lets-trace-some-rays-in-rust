@@ -1,25 +1,33 @@
 use std::path::PathBuf;
 
+use iced::futures;
 use iced::theme::Theme;
 use iced::widget::{button, column, container, image, progress_bar, row, text, text_input};
-use iced::{Element, Length, Sandbox};
+use iced::{Application, Command, Element, Length};
 
 use crate::app::filesystem::save_exr_image_to_disk;
-use crate::app::rendering::{convert_to_display_buffer, convert_to_openexr, render_scene};
+use crate::app::rendering::{convert_to_openexr, RenderTask};
 use crate::constants::{RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH};
 
 mod filesystem;
 mod rendering;
 
 #[derive(Debug, Clone)]
-pub enum ApplicationMessage {
+pub enum AppError {
+    RenderError,
+}
+
+#[derive(Debug, Clone)]
+pub enum Message {
     FileNameChanged(String),
     SaveFilePressed,
     RenderPressed,
+    RenderTaskFinished(Result<Vec<f32>, AppError>),
+    DisplayConversionTaskFinished(Result<Vec<u8>, AppError>),
 }
 
 /// Stores the state of the Application (GUI and all)
-pub struct Application {
+pub struct LTSRApp {
     pub file_name: String,
     pub file_name_with_ext: String,
     pub currente_render_progress: f32,
@@ -30,15 +38,17 @@ pub struct Application {
     pub render_buffer: Vec<f32>,
 }
 
-impl Sandbox for Application {
-    type Message = ApplicationMessage;
+impl Application for LTSRApp {
+    type Message = Message;
+    type Executor = iced::executor::Default;
+    type Flags = ();
+    type Theme = Theme;
 
-    fn new() -> Self {
+    fn new(_flags: ()) -> (LTSRApp, Command<Message>) {
         let file_name = String::from("sample_file");
 
-        let render_buffer: Vec<f32> = vec![1.0; RENDER_BUFFER_SIZE];
-        let mut display_buffer: Vec<u8> = vec![0; RENDER_BUFFER_SIZE];
-        convert_to_display_buffer(&render_buffer, &mut display_buffer);
+        let render_buffer: Vec<f32> = vec![0.0; RENDER_BUFFER_SIZE];
+        let display_buffer: Vec<u8> = vec![0; RENDER_BUFFER_SIZE];
 
         // Creates an image Handle containing the image pixels directly.
         // This function expects the input data to be provided as a Vec<u8> of RGBA pixels.
@@ -48,13 +58,16 @@ impl Sandbox for Application {
             display_buffer.clone(),
         );
 
-        Application {
-            file_name: file_name.clone(),
-            file_name_with_ext: format!("{file_name}.exr"),
-            currente_render_progress: 0.0,
-            rendered_image: image,
-            render_buffer,
-        }
+        (
+            LTSRApp {
+                file_name: file_name.clone(),
+                file_name_with_ext: format!("{file_name}.exr"),
+                currente_render_progress: 0.0,
+                rendered_image: image,
+                render_buffer,
+            },
+            Command::none(),
+        )
     }
 
     fn title(&self) -> String {
@@ -121,27 +134,43 @@ impl Sandbox for Application {
             .into()
     }
 
-    fn update(&mut self, message: ApplicationMessage) {
+    fn update(&mut self, message: Message) -> Command<Self::Message> {
         match message {
-            ApplicationMessage::RenderPressed => {
-                eprintln!("Rendering in the background...");
-                let render_buffer: Vec<f32> = render_scene();
-                self.render_buffer = render_buffer.clone();
-
-                let mut display_buffer: Vec<u8> = vec![0; RENDER_BUFFER_SIZE];
-                convert_to_display_buffer(&render_buffer, &mut display_buffer);
-
+            Message::RenderTaskFinished(Ok(render_buffer)) => Command::perform(
+                RenderTask::convert_to_display_buffer(render_buffer),
+                Message::DisplayConversionTaskFinished,
+            ),
+            Message::RenderTaskFinished(Err(err)) => {
+                eprintln!("Render failed: {err:?}");
+                Command::none()
+            }
+            Message::DisplayConversionTaskFinished(Ok(display_buffer)) => {
                 self.rendered_image = image::Handle::from_pixels(
                     RENDER_BUFFER_WIDTH as u32,
                     RENDER_BUFFER_HEIGHT as u32,
                     display_buffer.clone(),
                 );
+                Command::none()
             }
-            ApplicationMessage::FileNameChanged(new_name) => {
+
+            Message::DisplayConversionTaskFinished(Err(err)) => {
+                // TODO:
+                Command::none()
+            }
+
+            Message::RenderPressed => {
+                eprintln!("Starting new Render in the background..");
+
+                // Schedule the background render
+                Command::perform(RenderTask::render_scene(), Message::RenderTaskFinished)
+            }
+            Message::FileNameChanged(new_name) => {
                 self.file_name = new_name;
                 self.file_name_with_ext = format!("{}.exr", self.file_name);
+
+                Command::none()
             }
-            ApplicationMessage::SaveFilePressed => {
+            Message::SaveFilePressed => {
                 let save_dir = PathBuf::from("outputs");
                 let save_path = save_dir.join(&self.file_name_with_ext);
                 eprintln!("Saving render buffer to {}", save_path.display());
@@ -161,6 +190,8 @@ impl Sandbox for Application {
                         eprintln!("failed to save image: {e:?}");
                     }
                 }
+
+                Command::none()
             }
         }
     }

@@ -1,8 +1,10 @@
-use std::time::{Duration, Instant};
+use std::boxed::Box;
+use std::time::Instant;
 
 use anyhow;
 use exr::prelude::{AnyChannel, AnyChannels, Encoding, FlatSamples, Image, Layer, LayerAttributes};
 use glam::Vec3;
+use iced::futures;
 use rand::Rng;
 use smallvec::smallvec;
 
@@ -11,12 +13,16 @@ use colstodian::spaces::{AcesCg, EncodedSrgb};
 use colstodian::tonemap::{PerceptualTonemapper, PerceptualTonemapperParams, Tonemapper};
 use colstodian::{color, Color, Display};
 
+use crate::app::AppError;
 use crate::constants::{
     NUM_SAMPLES_PER_PIXEL, RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH,
 };
 use crate::ltsr::{fit_range, ray_color, Camera, Scene, Sphere};
 
 pub type SimpleOpenEXRImage = Image<Layer<AnyChannels<FlatSamples>>>;
+
+#[derive(Debug, Clone)]
+pub struct RenderTask {}
 
 /// Sample function demostrating how to render a custom image
 pub fn render_bg_image() -> Vec<f32> {
@@ -55,119 +61,139 @@ pub fn render_bg_image() -> Vec<f32> {
     render_buffer.clone()
 }
 
-/// Sample function performing the rendering of basic 3D scene
-pub fn render_scene() -> Vec<f32> {
-    let mut render_buffer = vec![0.0; RENDER_BUFFER_SIZE];
+impl RenderTask {
+    /// Sample function performing the rendering of basic 3D scene
+    pub async fn render_scene() -> Result<Vec<f32>, AppError> {
+        let mut render_buffer = vec![0.0; RENDER_BUFFER_SIZE];
 
-    eprintln!(
-        "Started rendering.. using {} rays per pixel",
-        NUM_SAMPLES_PER_PIXEL
-    );
-    let start_time = Instant::now();
+        eprintln!(
+            "Started rendering.. using {} rays per pixel",
+            NUM_SAMPLES_PER_PIXEL
+        );
+        let start_time = Instant::now();
 
-    // Shorthands
-    let image_width = RENDER_BUFFER_WIDTH as f32;
-    let image_height = RENDER_BUFFER_HEIGHT as f32;
-    let aspect_ratio: f32 = image_width / image_height;
+        // Shorthands
+        let image_width = RENDER_BUFFER_WIDTH as f32;
+        let image_height = RENDER_BUFFER_HEIGHT as f32;
+        let aspect_ratio: f32 = image_width / image_height;
 
-    // Camera properties
-    let viewport_height = 2.0;
-    let viewport_width = aspect_ratio * viewport_height;
-    let camera = Camera::new(1.0, viewport_width, viewport_height);
+        // Camera properties
+        let viewport_height = 2.0;
+        let viewport_width = aspect_ratio * viewport_height;
+        let camera = Camera::new(1.0, viewport_width, viewport_height);
 
-    // Scene properties
-    let mut scene = Scene::new();
+        // Scene properties
+        let mut scene = Scene::new();
 
-    // Let's check if our ray intersects some spheres
-    let spheres_z = -1.0;
-    let sphere = Sphere::new(0.5, Vec3::new(0.0, 0.0, spheres_z));
-    let sphere_2 = Sphere::new(100.0, Vec3::new(0.0, -100.5, spheres_z));
+        // Let's check if our ray intersects some spheres
+        let spheres_z = -1.0;
+        let sphere = Sphere::new(0.5, Vec3::new(0.0, 0.0, spheres_z));
+        let sphere_2 = Sphere::new(100.0, Vec3::new(0.0, -100.5, spheres_z));
 
-    scene.add_hittable(Box::new(sphere));
-    scene.add_hittable(Box::new(sphere_2));
+        scene.add_hittable(Box::new(sphere));
+        scene.add_hittable(Box::new(sphere_2));
 
-    // Sampling
-    let mut rng = rand::thread_rng();
+        // Sampling
+        let mut rng = rand::thread_rng();
 
-    // Generate the image
-    let mut index: usize = 0;
-    for y in (0..RENDER_BUFFER_HEIGHT).rev() {
-        for x in 0..RENDER_BUFFER_WIDTH {
-            let mut pixel_color = Vec3::new(0.0, 0.0, 0.0);
+        // Generate the image
+        let mut index: usize = 0;
+        for y in (0..RENDER_BUFFER_HEIGHT).rev() {
+            for x in 0..RENDER_BUFFER_WIDTH {
+                let mut pixel_color = Vec3::new(0.0, 0.0, 0.0);
 
-            // Antialiasing: multiple samples per pixel
-            for _ in 0..NUM_SAMPLES_PER_PIXEL {
-                // Get normalized U,V coordinates as we move through the image
-                let u = fit_range(x as f32 + rng.gen::<f32>(), 0.0, image_width, 0.0, 1.0);
-                let v = fit_range(y as f32 + rng.gen::<f32>(), 0.0, image_height, 0.0, 1.0);
+                // Antialiasing: multiple samples per pixel
+                for _ in 0..NUM_SAMPLES_PER_PIXEL {
+                    // Get normalized U,V coordinates as we move through the image
+                    let u = fit_range(x as f32 + rng.gen::<f32>(), 0.0, image_width, 0.0, 1.0);
+                    let v = fit_range(y as f32 + rng.gen::<f32>(), 0.0, image_height, 0.0, 1.0);
 
-                // Aim the camera based on the current u,v coordinates
-                let ray = camera.get_ray_at_coords(u, v);
-                pixel_color += ray_color(&ray, &scene);
+                    // Aim the camera based on the current u,v coordinates
+                    let ray = camera.get_ray_at_coords(u, v);
+                    pixel_color += ray_color(&ray, &scene);
+                }
+                // Divide by the num of samples to get the average
+                let scale = 1.0 / NUM_SAMPLES_PER_PIXEL as f32;
+                pixel_color *= scale;
+
+                // Convert from display-referred (0..1) to scene-referred (0..infinity)
+                // TODO: Do the propert state conversion from Display to Scene
+                let rendered_color =
+                    color::acescg::<colstodian::Scene>(pixel_color.x, pixel_color.y, pixel_color.z);
+
+                // R, G, B, A
+                render_buffer[index + 0] = rendered_color.r;
+                render_buffer[index + 1] = rendered_color.g;
+                render_buffer[index + 2] = rendered_color.b;
+                render_buffer[index + 3] = 1.0;
+
+                index += 4;
             }
-            // Divide by the num of samples to get the average
-            let scale = 1.0 / NUM_SAMPLES_PER_PIXEL as f32;
-            pixel_color *= scale;
-
-            // Convert from display-referred (0..1) to scene-referred (0..infinity)
-            // TODO: Do the propert state conversion from Display to Scene
-            let rendered_color =
-                color::acescg::<colstodian::Scene>(pixel_color.x, pixel_color.y, pixel_color.z);
-
-            // R, G, B, A
-            render_buffer[index + 0] = rendered_color.r;
-            render_buffer[index + 1] = rendered_color.g;
-            render_buffer[index + 2] = rendered_color.b;
-            render_buffer[index + 3] = 1.0;
-
-            index += 4;
         }
+
+        eprintln!("Finished rendering!");
+
+        let elapsed_time = start_time.elapsed();
+        eprintln!(
+            "Elapsed time: {:?} (~{} seconds)",
+            elapsed_time,
+            elapsed_time.as_secs()
+        );
+
+        Ok(render_buffer)
     }
 
-    eprintln!("Finished rendering!");
+    /// Takes the floating point pixels from ``render_buffer`` and performs the
+    /// math to store them in ``display_buffer``, ready to be presented as 8 bit
+    /// bytes in the GUI
+    pub async fn convert_to_display_buffer(render_buffer: Vec<f32>) -> Result<Vec<u8>, AppError> {
+        eprintln!("Converting from ACESCG linear to Display Color Space");
+        let start_time = Instant::now();
 
-    let elapsed_time = start_time.elapsed();
-    eprintln!(
-        "Elapsed time: {:?} (~{} seconds)",
-        elapsed_time,
-        elapsed_time.as_secs()
-    );
-    render_buffer
-}
+        // Copy, and mutate the copy
 
-/// Takes the floating point pixels from ``render_buffer`` and performs the
-/// math to store them in ``display_buffer``, ready to be presented as 8 bit
-/// bytes in the GUI
-pub fn convert_to_display_buffer(render_buffer: &Vec<f32>, display_buffer: &mut Vec<u8>) {
-    // Do the scene linear to display conversion
-    let it = std::iter::zip(
-        render_buffer.chunks_exact(4),
-        display_buffer.chunks_exact_mut(4),
-    );
+        let mut display_buffer: Vec<u8> = vec![0; RENDER_BUFFER_SIZE];
 
-    for (f32_pixel, u8_pixel) in it {
-        // For the sake of simplicity and saving memory, our array is composed of f32
-        // instead of colostodian Color structs. Here we recreate the colstodian struct
-        // on the fly so we can do the conversion to 8bit sRGB and go to display referred
-        // by applying default a SDR tone mapping
-        let rendered_color = colstodian::color::acescg(f32_pixel[0], f32_pixel[1], f32_pixel[2]);
+        // Do the scene linear to display conversion
+        let it = std::iter::zip(
+            render_buffer.chunks_exact(4),
+            display_buffer.chunks_exact_mut(4),
+        );
 
-        // Use a standard Tonemap to go from ACEScg HDR to SDR
-        let params = PerceptualTonemapperParams::default();
-        let tonemapped: Color<AcesCg, Display> =
-            PerceptualTonemapper::tonemap(rendered_color, params).convert();
+        for (f32_pixel, u8_pixel) in it {
+            // For the sake of simplicity and saving memory, our array is composed of f32
+            // instead of colostodian Color structs. Here we recreate the colstodian struct
+            // on the fly so we can do the conversion to 8bit sRGB and go to display referred
+            // by applying default a SDR tone mapping
+            let rendered_color =
+                colstodian::color::acescg(f32_pixel[0], f32_pixel[1], f32_pixel[2]);
 
-        // Encode in sRGB so we're ready to display or write to an image
-        let encoded = tonemapped.convert::<EncodedSrgb>();
+            // Use a standard Tonemap to go from ACEScg HDR to SDR
+            let params = PerceptualTonemapperParams::default();
+            let tonemapped: Color<AcesCg, Display> =
+                PerceptualTonemapper::tonemap(rendered_color, params).convert();
 
-        // Convert to 8bit
-        let rgb: [u8; 3] = encoded.to_u8();
-        let alpha = f32_pixel[3];
+            // Encode in sRGB so we're ready to display or write to an image
+            let encoded = tonemapped.convert::<EncodedSrgb>();
 
-        // Can I avoid doing a copy here ?
-        let rgba: [u8; 4] = [rgb[0], rgb[1], rgb[2], (255 as f32 * alpha) as u8];
+            // Convert to 8bit
+            let rgb: [u8; 3] = encoded.to_u8();
+            let alpha = f32_pixel[3];
 
-        u8_pixel.copy_from_slice(&rgba);
+            // Can I avoid doing a copy here ?
+            let rgba: [u8; 4] = [rgb[0], rgb[1], rgb[2], (255 as f32 * alpha) as u8];
+
+            u8_pixel.copy_from_slice(&rgba);
+        }
+
+        let elapsed_time = start_time.elapsed();
+        eprintln!(
+            "Conversion finished, elapsed time: {:?}, (~{} seconds)",
+            elapsed_time,
+            elapsed_time.as_secs()
+        );
+
+        Ok(display_buffer)
     }
 }
 
