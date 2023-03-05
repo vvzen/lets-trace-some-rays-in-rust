@@ -126,8 +126,6 @@ impl Sandbox for Application {
                 let save_path = save_dir.join(&self.file_name_with_ext);
                 eprintln!("Saving render buffer to {}", save_path.display());
 
-                // Create the output dir if it doesn'e exit
-
                 match convert_to_openexr(
                     RENDER_BUFFER_WIDTH,
                     RENDER_BUFFER_HEIGHT,
