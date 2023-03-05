@@ -118,9 +118,7 @@ impl Sandbox for Application {
                 eprintln!("Rendering in the background...");
             }
             ApplicationMessage::FileNameChanged(new_name) => {
-                eprintln!("New name: {new_name}");
                 self.file_name = new_name;
-                eprintln!("New file name: {}", self.file_name);
                 self.file_name_with_ext = format!("{}.exr", self.file_name);
             }
             ApplicationMessage::SaveFilePressed => {
