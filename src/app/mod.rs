@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use iced::theme::Theme;
-use iced::widget::{button, column, container, image, row, text, text_input};
+use iced::widget::{button, column, container, image, progress_bar, row, text, text_input};
 use iced::{Element, Length, Sandbox};
 
 use crate::app::filesystem::save_exr_image_to_disk;
@@ -22,6 +22,8 @@ pub enum ApplicationMessage {
 pub struct Application {
     pub file_name: String,
     pub file_name_with_ext: String,
+    pub currente_render_progress: f32,
+
     /// 8bit image displayed in the GUI
     pub rendered_image: image::Handle,
     /// 32bit floating point render buffer storing the rendered image
@@ -49,6 +51,7 @@ impl Sandbox for Application {
         Application {
             file_name: file_name.clone(),
             file_name_with_ext: format!("{file_name}.exr"),
+            currente_render_progress: 0.0,
             rendered_image: image,
             render_buffer,
         }
@@ -79,6 +82,9 @@ impl Sandbox for Application {
         .padding(10)
         .width(Length::Fill);
 
+        // Progress Bar
+        let render_progress_bar = progress_bar(0.0..=100.0, self.currente_render_progress);
+
         // Save text field
         let file_name_input = text_input(
             "Your file name",
@@ -88,6 +94,7 @@ impl Sandbox for Application {
         .padding(10)
         .size(20);
 
+        // Save button
         let save_button = button(
             text("Save")
                 .width(Length::Fill)
@@ -97,8 +104,10 @@ impl Sandbox for Application {
         .padding(10)
         .width(100);
 
+        // Final UI
         let content = column![
             row![rendered_image].padding(10).spacing(10),
+            row![render_progress_bar].padding(10).spacing(10),
             row![render_button].padding(10).spacing(10),
             row![file_name_input, save_button].padding(10).spacing(10),
         ]
