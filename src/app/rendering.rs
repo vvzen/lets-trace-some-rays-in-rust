@@ -1,9 +1,7 @@
 use std::path::Path;
 
 use anyhow;
-use exr::prelude::{
-    AnyChannel, AnyChannels, Encoding, FlatSamples, Image, Layer, LayerAttributes, WritableImage,
-};
+use exr::prelude::{AnyChannel, AnyChannels, Encoding, FlatSamples, Image, Layer, LayerAttributes};
 use glam::Vec3;
 use rand::Rng;
 use smallvec::smallvec;
@@ -17,6 +15,8 @@ use crate::constants::{
     NUM_SAMPLES_PER_PIXEL, RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH,
 };
 use crate::ltsr::{fit_range, ray_color, Camera, Scene, Sphere};
+
+pub type SimpleOpenEXRImage = Image<Layer<AnyChannels<FlatSamples>>>;
 
 /// Sample function demostrating how to render a custom image
 pub fn render_bg_image() -> Vec<f32> {
@@ -157,12 +157,11 @@ pub fn convert_to_display_buffer(render_buffer: &Vec<f32>, display_buffer: &mut 
     }
 }
 
-pub fn write_as_exr_image(
-    image_path: impl AsRef<Path>,
+pub fn convert_to_openexr(
     width: usize,
     height: usize,
-    render_buffer: &Box<[f32; RENDER_BUFFER_SIZE]>,
-) -> anyhow::Result<()> {
+    render_buffer: &Vec<f32>,
+) -> anyhow::Result<SimpleOpenEXRImage> {
     let resolution = (width, height);
 
     // A vec for each channel
@@ -206,17 +205,6 @@ pub fn write_as_exr_image(
 
     // Write the image to disk
     let image = Image::from_layer(layer);
-    match image.write().to_file(&image_path) {
-        Ok(_) => {
-            eprintln!(
-                "Successfully saved image to {}",
-                image_path.as_ref().display()
-            );
-        }
-        Err(e) => {
-            anyhow::bail!("Failed to write image: {e:?}");
-        }
-    }
 
-    Ok(())
+    Ok(image)
 }
