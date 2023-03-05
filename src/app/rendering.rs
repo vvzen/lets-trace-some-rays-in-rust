@@ -150,8 +150,7 @@ impl RenderTask {
         eprintln!("Converting from ACESCG linear to Display Color Space");
         let start_time = Instant::now();
 
-        // Copy, and mutate the copy
-
+        // Create a new buffer to host the converted pixels
         let mut display_buffer: Vec<u8> = vec![0; RENDER_BUFFER_SIZE];
 
         // Do the scene linear to display conversion
