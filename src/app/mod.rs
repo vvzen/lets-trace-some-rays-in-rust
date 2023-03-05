@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use iced::theme::Theme;
 use iced::widget::{button, column, container, image, row, text, text_input};
-use iced::{Alignment, Element, Length, Sandbox};
+use iced::{Element, Length, Sandbox};
 
 use crate::app::filesystem::save_exr_image_to_disk;
 use crate::app::rendering::{convert_to_display_buffer, convert_to_openexr, render_scene};
