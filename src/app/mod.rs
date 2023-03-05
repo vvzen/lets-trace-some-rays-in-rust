@@ -30,7 +30,8 @@ pub enum Message {
 pub struct LTSRApp {
     pub file_name: String,
     pub file_name_with_ext: String,
-    pub currente_render_progress: f32,
+    pub current_render_progress: f32,
+    pub render_progress_label: String,
 
     /// 8bit image displayed in the GUI
     pub rendered_image: image::Handle,
@@ -58,13 +59,16 @@ impl Application for LTSRApp {
             display_buffer.clone(),
         );
 
+        let render_progress_label = String::from("Render not started.");
+
         (
             LTSRApp {
                 file_name: file_name.clone(),
                 file_name_with_ext: format!("{file_name}.exr"),
-                currente_render_progress: 0.0,
+                current_render_progress: 0.0,
                 rendered_image: image,
                 render_buffer,
+                render_progress_label,
             },
             Command::none(),
         )
@@ -95,8 +99,11 @@ impl Application for LTSRApp {
         .padding(10)
         .width(Length::Fill);
 
-        // Progress Bar
-        let render_progress_bar = progress_bar(0.0..=100.0, self.currente_render_progress);
+        // Progress Report
+        // let render_progress_bar = progress_bar(0.0..=100.0, self.current_render_progress);
+        let render_progress_label = container(text(&self.render_progress_label).size(12))
+            .width(Length::Fill)
+            .center_x();
 
         // Save text field
         let file_name_input = text_input(
@@ -120,7 +127,8 @@ impl Application for LTSRApp {
         // Final UI
         let content = column![
             row![rendered_image].padding(10).spacing(10),
-            row![render_progress_bar].padding(10).spacing(10),
+            row![render_progress_label].padding(10).spacing(10),
+            // row![render_progress_bar].padding(10).spacing(10),
             row![render_button].padding(10).spacing(10),
             row![file_name_input, save_button].padding(10).spacing(10),
         ]
@@ -136,10 +144,15 @@ impl Application for LTSRApp {
 
     fn update(&mut self, message: Message) -> Command<Self::Message> {
         match message {
-            Message::RenderTaskFinished(Ok(render_buffer)) => Command::perform(
-                RenderTask::convert_to_display_buffer(render_buffer),
-                Message::DisplayConversionTaskFinished,
-            ),
+            Message::RenderTaskFinished(Ok(render_buffer)) => {
+                self.render_progress_label =
+                    String::from("Main ACEScg Render finished, converting to sRGB..");
+
+                Command::perform(
+                    RenderTask::convert_to_display_buffer(render_buffer),
+                    Message::DisplayConversionTaskFinished,
+                )
+            }
             Message::RenderTaskFinished(Err(err)) => {
                 eprintln!("Render failed: {err:?}");
                 Command::none()
@@ -150,6 +163,10 @@ impl Application for LTSRApp {
                     RENDER_BUFFER_HEIGHT as u32,
                     display_buffer.clone(),
                 );
+
+                self.render_progress_label =
+                    String::from("Converted from ACEScg to Display Color Space!");
+
                 Command::none()
             }
 
@@ -159,7 +176,8 @@ impl Application for LTSRApp {
             }
 
             Message::RenderPressed => {
-                eprintln!("Starting new Render in the background..");
+                let message = String::from("Starting new Render in the background..");
+                self.render_progress_label = message;
 
                 // Schedule the background render
                 Command::perform(RenderTask::render_scene(), Message::RenderTaskFinished)
