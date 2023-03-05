@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::time::{Duration, Instant};
 
 use anyhow;
 use exr::prelude::{AnyChannel, AnyChannels, Encoding, FlatSamples, Image, Layer, LayerAttributes};
@@ -63,6 +63,7 @@ pub fn render_scene() -> Vec<f32> {
         "Started rendering.. using {} rays per pixel",
         NUM_SAMPLES_PER_PIXEL
     );
+    let start_time = Instant::now();
 
     // Shorthands
     let image_width = RENDER_BUFFER_WIDTH as f32;
@@ -125,6 +126,12 @@ pub fn render_scene() -> Vec<f32> {
 
     eprintln!("Finished rendering!");
 
+    let elapsed_time = start_time.elapsed();
+    eprintln!(
+        "Elapsed time: {:?} (~{} seconds)",
+        elapsed_time,
+        elapsed_time.as_secs()
+    );
     render_buffer
 }
 
