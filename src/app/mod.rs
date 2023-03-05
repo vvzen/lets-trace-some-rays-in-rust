@@ -1,10 +1,14 @@
+use std::path::PathBuf;
+
 use iced::theme::Theme;
 use iced::widget::{button, column, container, image, row, text, text_input};
-use iced::{Alignment, Element, Length, Sandbox};
+use iced::{Element, Length, Sandbox};
 
-use crate::app::rendering::{convert_to_display_buffer, render_scene};
+use crate::app::filesystem::save_exr_image_to_disk;
+use crate::app::rendering::{convert_to_display_buffer, convert_to_openexr, render_scene};
 use crate::constants::{RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH};
 
+mod filesystem;
 mod rendering;
 
 #[derive(Debug, Clone)]
@@ -14,13 +18,17 @@ pub enum ApplicationMessage {
     RenderPressed,
 }
 
-pub struct ApplicationState {
+/// Stores the state of the Application (GUI and all)
+pub struct Application {
     pub file_name: String,
     pub file_name_with_ext: String,
+    /// 8bit image displayed in the GUI
     pub rendered_image: image::Handle,
+    /// 32bit floating point render buffer storing the rendered image
+    pub render_buffer: Vec<f32>,
 }
 
-impl Sandbox for ApplicationState {
+impl Sandbox for Application {
     type Message = ApplicationMessage;
 
     fn new() -> Self {
@@ -38,10 +46,11 @@ impl Sandbox for ApplicationState {
             display_buffer.clone(),
         );
 
-        ApplicationState {
+        Application {
             file_name: file_name.clone(),
             file_name_with_ext: format!("{file_name}.exr"),
             rendered_image: image,
+            render_buffer,
         }
     }
 
@@ -109,13 +118,29 @@ impl Sandbox for ApplicationState {
                 eprintln!("Rendering in the background...");
             }
             ApplicationMessage::FileNameChanged(new_name) => {
-                eprintln!("New name: {new_name}");
                 self.file_name = new_name;
-                eprintln!("New file name: {}", self.file_name);
                 self.file_name_with_ext = format!("{}.exr", self.file_name);
             }
             ApplicationMessage::SaveFilePressed => {
-                eprintln!("Saving {} to disk..", self.file_name_with_ext);
+                let save_dir = PathBuf::from("outputs");
+                let save_path = save_dir.join(&self.file_name_with_ext);
+                eprintln!("Saving render buffer to {}", save_path.display());
+
+                match convert_to_openexr(
+                    RENDER_BUFFER_WIDTH,
+                    RENDER_BUFFER_HEIGHT,
+                    &self.render_buffer,
+                ) {
+                    Ok(image) => match save_exr_image_to_disk(image, save_path) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!("failed to save image: {e:?}");
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("failed to save image: {e:?}");
+                    }
+                }
             }
         }
     }
