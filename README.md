@@ -11,7 +11,7 @@ Current features:
 
 - UI: GPU Framebuffer shows a 8bit tonemapped conversion of the render buffer (32bit float) 
 
-- UI: Filesystem safe to OpenEXR container (ZIP compression), thanks to [exr](https://github.com/johannesvollmer/exrs)
+- UI: Save to filesystem in OpenEXR container (ZIP compression), thanks to [exr](https://github.com/johannesvollmer/exrs)
 
 - 3D: Rendering done in scene linear ACEScg colorspace, thanks to [colstodian](https://crates.io/crates/colstodian)
 
