@@ -14,13 +14,13 @@ pub enum ApplicationMessage {
     RenderPressed,
 }
 
-pub struct ApplicationState {
+pub struct Application {
     pub file_name: String,
     pub file_name_with_ext: String,
     pub rendered_image: image::Handle,
 }
 
-impl Sandbox for ApplicationState {
+impl Sandbox for Application {
     type Message = ApplicationMessage;
 
     fn new() -> Self {
@@ -38,7 +38,7 @@ impl Sandbox for ApplicationState {
             display_buffer.clone(),
         );
 
-        ApplicationState {
+        Application {
             file_name: file_name.clone(),
             file_name_with_ext: format!("{file_name}.exr"),
             rendered_image: image,
