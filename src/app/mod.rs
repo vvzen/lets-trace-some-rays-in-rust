@@ -34,7 +34,7 @@ impl Sandbox for Application {
     fn new() -> Self {
         let file_name = String::from("sample_file");
 
-        let render_buffer: Vec<f32> = render_scene();
+        let render_buffer: Vec<f32> = vec![1.0; RENDER_BUFFER_SIZE];
         let mut display_buffer: Vec<u8> = vec![0; RENDER_BUFFER_SIZE];
         convert_to_display_buffer(&render_buffer, &mut display_buffer);
 
@@ -116,6 +116,17 @@ impl Sandbox for Application {
         match message {
             ApplicationMessage::RenderPressed => {
                 eprintln!("Rendering in the background...");
+                let render_buffer: Vec<f32> = render_scene();
+                self.render_buffer = render_buffer.clone();
+
+                let mut display_buffer: Vec<u8> = vec![0; RENDER_BUFFER_SIZE];
+                convert_to_display_buffer(&render_buffer, &mut display_buffer);
+
+                self.rendered_image = image::Handle::from_pixels(
+                    RENDER_BUFFER_WIDTH as u32,
+                    RENDER_BUFFER_HEIGHT as u32,
+                    display_buffer.clone(),
+                );
             }
             ApplicationMessage::FileNameChanged(new_name) => {
                 self.file_name = new_name;

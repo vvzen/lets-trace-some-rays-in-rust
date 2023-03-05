@@ -59,6 +59,11 @@ pub fn render_bg_image() -> Vec<f32> {
 pub fn render_scene() -> Vec<f32> {
     let mut render_buffer = vec![0.0; RENDER_BUFFER_SIZE];
 
+    eprintln!(
+        "Started rendering.. using {} rays per pixel",
+        NUM_SAMPLES_PER_PIXEL
+    );
+
     // Shorthands
     let image_width = RENDER_BUFFER_WIDTH as f32;
     let image_height = RENDER_BUFFER_HEIGHT as f32;
@@ -117,6 +122,8 @@ pub fn render_scene() -> Vec<f32> {
             index += 4;
         }
     }
+
+    eprintln!("Finished rendering!");
 
     render_buffer
 }
