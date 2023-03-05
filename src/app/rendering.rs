@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use anyhow;
-use colstodian::color;
 use exr::prelude::{
     AnyChannel, AnyChannels, Encoding, FlatSamples, Image, Layer, LayerAttributes, WritableImage,
 };
@@ -9,10 +8,21 @@ use glam::Vec3;
 use rand::Rng;
 use smallvec::smallvec;
 
-use crate::gui::constants::{RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH};
+// Color
+use colstodian::spaces::{AcesCg, EncodedSrgb};
+use colstodian::tonemap::{PerceptualTonemapper, PerceptualTonemapperParams, Tonemapper};
+use colstodian::{color, Color, Display};
+
+use crate::constants::{
+    NUM_SAMPLES_PER_PIXEL, RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH,
+};
 use crate::ltsr::{fit_range, ray_color, Camera, Scene, Sphere};
 
-pub fn render_bg_image(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
+/// Sample function demostrating how to render a custom image
+pub fn render_bg_image() -> Vec<f32> {
+    let mut render_buffer = vec![0.0; RENDER_BUFFER_SIZE];
+
+    // Render a in linear color space
     let mut index: usize = 0;
     for y in (0..RENDER_BUFFER_HEIGHT).rev() {
         for x in 0..RENDER_BUFFER_WIDTH {
@@ -23,19 +33,11 @@ pub fn render_bg_image(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
             // Generate a gradient between two colors in AcesCG
             // TODO: Could we do this in LAB, and then convert to ACES CG ?
             let red = color::acescg::<colstodian::Scene>(1.0, 0.0, 0.0);
-            let blue = color::acescg::<colstodian::Scene>(0.0, 0.0, 1.0);
             let green = color::acescg::<colstodian::Scene>(0.0, 1.0, 0.0);
+            let blue = color::acescg::<colstodian::Scene>(0.0, 0.0, 1.0);
             let h_blended = red.blend(green, u);
             let v_blended = red.blend(blue, v);
             let final_color = h_blended.blend(v_blended, 0.5);
-
-            // Here I was playing around with Color Spaces
-            // let red = fit_range(x as f32, 0.0, RENDER_BUFFER_WIDTH as f32, 0.0, 1.0);
-            // let green = fit_range(y as f32, 0.0, RENDER_BUFFER_HEIGHT as f32, 0.0, 1.0);
-            // let blue = 0.25;
-
-            // let rd = color::acescg::<Display>(red, green, blue);
-            // let rendered_color: Color<AcesCg, Scene> = rd.convert_state(|f| f);
 
             let rendered_color =
                 color::acescg::<colstodian::Scene>(final_color.r, final_color.g, final_color.b);
@@ -49,9 +51,14 @@ pub fn render_bg_image(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
             index += 4;
         }
     }
+
+    render_buffer.clone()
 }
 
-pub fn render_scene(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
+/// Sample function performing the rendering of basic 3D scene
+pub fn render_scene() -> Vec<f32> {
+    let mut render_buffer = vec![0.0; RENDER_BUFFER_SIZE];
+
     // Shorthands
     let image_width = RENDER_BUFFER_WIDTH as f32;
     let image_height = RENDER_BUFFER_HEIGHT as f32;
@@ -74,7 +81,6 @@ pub fn render_scene(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
     scene.add_hittable(Box::new(sphere_2));
 
     // Sampling
-    let num_samples_per_pixel = 100;
     let mut rng = rand::thread_rng();
 
     // Generate the image
@@ -84,7 +90,7 @@ pub fn render_scene(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
             let mut pixel_color = Vec3::new(0.0, 0.0, 0.0);
 
             // Antialiasing: multiple samples per pixel
-            for _ in 0..num_samples_per_pixel {
+            for _ in 0..NUM_SAMPLES_PER_PIXEL {
                 // Get normalized U,V coordinates as we move through the image
                 let u = fit_range(x as f32 + rng.gen::<f32>(), 0.0, image_width, 0.0, 1.0);
                 let v = fit_range(y as f32 + rng.gen::<f32>(), 0.0, image_height, 0.0, 1.0);
@@ -94,7 +100,7 @@ pub fn render_scene(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
                 pixel_color += ray_color(&ray, &scene);
             }
             // Divide by the num of samples to get the average
-            let scale = 1.0 / num_samples_per_pixel as f32;
+            let scale = 1.0 / NUM_SAMPLES_PER_PIXEL as f32;
             pixel_color *= scale;
 
             // Convert from display-referred (0..1) to scene-referred (0..infinity)
@@ -110,6 +116,44 @@ pub fn render_scene(render_buffer: &mut [f32; RENDER_BUFFER_SIZE]) {
 
             index += 4;
         }
+    }
+
+    render_buffer
+}
+
+/// Takes the floating point pixels from ``render_buffer`` and performs the
+/// math to store them in ``display_buffer``, ready to be presented as 8 bit
+/// bytes in the GUI
+pub fn convert_to_display_buffer(render_buffer: &Vec<f32>, display_buffer: &mut Vec<u8>) {
+    // Do the scene linear to display conversion
+    let it = std::iter::zip(
+        render_buffer.chunks_exact(4),
+        display_buffer.chunks_exact_mut(4),
+    );
+
+    for (f32_pixel, u8_pixel) in it {
+        // For the sake of simplicity and saving memory, our array is composed of f32
+        // instead of colostodian Color structs. Here we recreate the colstodian struct
+        // on the fly so we can do the conversion to 8bit sRGB and go to display referred
+        // by applying default a SDR tone mapping
+        let rendered_color = colstodian::color::acescg(f32_pixel[0], f32_pixel[1], f32_pixel[2]);
+
+        // Use a standard Tonemap to go from ACEScg HDR to SDR
+        let params = PerceptualTonemapperParams::default();
+        let tonemapped: Color<AcesCg, Display> =
+            PerceptualTonemapper::tonemap(rendered_color, params).convert();
+
+        // Encode in sRGB so we're ready to display or write to an image
+        let encoded = tonemapped.convert::<EncodedSrgb>();
+
+        // Convert to 8bit
+        let rgb: [u8; 3] = encoded.to_u8();
+        let alpha = f32_pixel[3];
+
+        // Can I avoid doing a copy here ?
+        let rgba: [u8; 4] = [rgb[0], rgb[1], rgb[2], (255 as f32 * alpha) as u8];
+
+        u8_pixel.copy_from_slice(&rgba);
     }
 }
 
