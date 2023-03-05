@@ -22,7 +22,7 @@ Current features:
 ## Things I want to do
 
 - Proper multithreaded rendering, based on the number of cores.
-  - Could happen via rayon, or via a bespoke solution.
+  - Could happen via [rayon](https://crates.io/crates/rayon), or via a bespoke solution.
 
 ## Things I have learned so far
 
