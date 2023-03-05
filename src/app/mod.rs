@@ -22,7 +22,9 @@ pub enum ApplicationMessage {
 pub struct Application {
     pub file_name: String,
     pub file_name_with_ext: String,
+    /// 8bit image displayed in the GUI
     pub rendered_image: image::Handle,
+    /// 32bit floating point render buffer storing the rendered image
     pub render_buffer: Vec<f32>,
 }
 
