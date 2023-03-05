@@ -17,6 +17,6 @@ pixels = "0.11.0"
 iced = { version = "0.8.0", features = ["image"] }
 # Color
 colstodian = "0.1.0-rc.3"
-# OpenEXR handline
+# OpenEXR handling
 exr = "1.5.3"
 smallvec = "1.10.0"
