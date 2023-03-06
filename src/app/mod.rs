@@ -147,6 +147,7 @@ impl Application for LTSRApp {
             Message::RenderTaskFinished(Ok(render_buffer)) => {
                 self.render_progress_label =
                     String::from("Main ACEScg Render finished, converting to sRGB..");
+                self.render_buffer = render_buffer.clone();
 
                 Command::perform(
                     RenderTask::convert_to_display_buffer(render_buffer),
