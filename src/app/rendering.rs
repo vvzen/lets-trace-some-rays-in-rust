@@ -145,10 +145,11 @@ impl RenderTask {
 
     /// Takes the floating point pixels from ``render_buffer`` and performs the
     /// math to store them in ``display_buffer``, ready to be presented as 8 bit
-    /// bytes in the GUI
+    /// bytes in the GUI. If ``is_data_pass`` is true, no color management will
+    /// be applied.
     pub async fn convert_to_display_buffer(
         render_buffer: Vec<f32>,
-        is_utility_render_pass: bool,
+        is_data_pass: bool,
     ) -> Result<Vec<u8>, AppError> {
         eprintln!("Converting from ACESCG linear to Display Color Space");
         let start_time = Instant::now();
@@ -166,7 +167,7 @@ impl RenderTask {
             // If we're working with a utility pass (eg: normals, etc.)
             // we only need to go from the 0-1 range to the 0-255 range
             // without going through tonemapping at all
-            if is_utility_render_pass {
+            if is_data_pass {
                 let rgba = [
                     (f32_pixel[0] * 255.0) as u8,
                     (f32_pixel[1] * 255.0) as u8,
