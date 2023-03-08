@@ -146,7 +146,10 @@ impl RenderTask {
     /// Takes the floating point pixels from ``render_buffer`` and performs the
     /// math to store them in ``display_buffer``, ready to be presented as 8 bit
     /// bytes in the GUI
-    pub async fn convert_to_display_buffer(render_buffer: Vec<f32>) -> Result<Vec<u8>, AppError> {
+    pub async fn convert_to_display_buffer(
+        render_buffer: Vec<f32>,
+        is_utility_render_pass: bool,
+    ) -> Result<Vec<u8>, AppError> {
         eprintln!("Converting from ACESCG linear to Display Color Space");
         let start_time = Instant::now();
 
@@ -160,6 +163,21 @@ impl RenderTask {
         );
 
         for (f32_pixel, u8_pixel) in it {
+            // If we're working with a utility pass (eg: normals, etc.)
+            // we only need to go from the 0-1 range to the 0-255 range
+            // without going through tonemapping at all
+            if is_utility_render_pass {
+                let rgba = [
+                    (f32_pixel[0] * 255.0) as u8,
+                    (f32_pixel[1] * 255.0) as u8,
+                    (f32_pixel[2] * 255.0) as u8,
+                    (f32_pixel[3] * 255.0) as u8,
+                ];
+
+                u8_pixel.copy_from_slice(&rgba);
+                continue;
+            }
+
             // For the sake of simplicity and saving memory, our array is composed of f32
             // instead of colostodian Color structs. Here we recreate the colstodian struct
             // on the fly so we can do the conversion to 8bit sRGB and go to display referred
