@@ -91,7 +91,7 @@ impl Application for LTSRApp {
 
         // Render button
         let render_button = button(
-            text("Render")
+            text("Start new Render")
                 .width(Length::Fill)
                 .horizontal_alignment(iced::alignment::Horizontal::Center),
         )
