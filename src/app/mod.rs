@@ -91,7 +91,7 @@ impl Application for LTSRApp {
 
         // Render button
         let render_button = button(
-            text("Render")
+            text("Start new Render")
                 .width(Length::Fill)
                 .horizontal_alignment(iced::alignment::Horizontal::Center),
         )
@@ -147,10 +147,12 @@ impl Application for LTSRApp {
             Message::RenderTaskFinished(Ok(render_buffer)) => {
                 self.render_progress_label =
                     String::from("Main ACEScg Render finished, converting to sRGB..");
+
+                // TODO: Add checkbox for display colorspace conversion
                 self.render_buffer = render_buffer.clone();
 
                 Command::perform(
-                    RenderTask::convert_to_display_buffer(render_buffer),
+                    RenderTask::convert_to_display_buffer(render_buffer, true),
                     Message::DisplayConversionTaskFinished,
                 )
             }
