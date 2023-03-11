@@ -1,4 +1,5 @@
 use glam::Vec3;
+use rand::distributions::{Distribution, Uniform};
 
 type Color = Vec3;
 
@@ -178,17 +179,35 @@ impl Camera {
 
 /// Given a Ray and a Scene of objects, return the color
 /// resulting with the Ray intersecting the Scene
-pub fn ray_color(ray: &Ray, scene: &Scene) -> Color {
-    let t_min = 0.0;
+pub fn ray_color(ray: &Ray, scene: &Scene, max_depth: i32) -> Color {
+    // Offset the min a bit from 0 to avoid self-intersections caused
+    // by rounding floating point conversions
+    let t_min = 0.001;
     let t_max = f32::INFINITY;
 
-    let pixel_color;
+    // We've exceeded the maximum amount of bounces
+    // for the current object: return a black shadow!
+    if max_depth <= 0 {
+        return Color::new(0.0, 0.0, 0.0);
+    }
 
     match scene.hit(ray, t_min, t_max) {
         Some(object) => {
-            // let mut pixel_color = Vec3::new(0.0, 0.0, 0.0);
+            let new_max_depth = match max_depth.checked_sub(1) {
+                Some(n) => n,
+                None => {
+                    panic!("Integer underflow occurred!");
+                }
+            };
 
-            pixel_color = 0.5 * (object.normal + Vec3::new(1.0, 1.0, 1.0));
+            // Scatter a new ray in a random direction, but based
+            // on the Normal of the object that we have just hit
+            let random_point_in_sphere = random_in_hemisphere(object.normal);
+            let target = object.hit_point + random_point_in_sphere;
+            let new_ray = Ray::new(object.hit_point, target - object.hit_point);
+
+            let mut pixel_color = Vec3::new(0.5, 0.5, 0.5);
+            pixel_color *= ray_color(&new_ray, &scene, new_max_depth);
 
             return Color::new(pixel_color.x, pixel_color.y, pixel_color.z);
         }
@@ -217,4 +236,36 @@ fn get_background_color(ray: &Ray) -> Color {
 /// Linear remap a value in one range into another range (no clamping)
 pub fn fit_range(x: f32, imin: f32, imax: f32, omin: f32, omax: f32) -> f32 {
     (omax - omin) * (x - imin) / (imax - imin) + omin
+}
+
+/// Generate a random point in a unit sphere
+fn random_in_unit_sphere() -> Vec3 {
+    let mut rng = rand::thread_rng();
+
+    // TODO: Investigate using a lazy_static for this
+    let range = Uniform::from(-1.0..1.0);
+
+    loop {
+        let x: f32 = range.sample(&mut rng);
+        let y: f32 = range.sample(&mut rng);
+        let z: f32 = range.sample(&mut rng);
+
+        let p = Vec3::new(x, y, z);
+
+        if p.length_squared() < 1.0 {
+            return p;
+        }
+    }
+}
+
+/// Generate a random point in a unit sphere
+/// but in the same hemisphere as a Normal vector
+fn random_in_hemisphere(normal: Vec3) -> Vec3 {
+    let in_unit_sphere = random_in_unit_sphere();
+
+    if Vec3::dot(in_unit_sphere, normal) > 0.0 {
+        return in_unit_sphere;
+    } else {
+        return -in_unit_sphere;
+    }
 }

@@ -148,11 +148,13 @@ impl Application for LTSRApp {
                 self.render_progress_label =
                     String::from("Main ACEScg Render finished, converting to sRGB..");
 
-                // TODO: Add checkbox for display colorspace conversion
                 self.render_buffer = render_buffer.clone();
 
+                // TODO: Add checkbox for display colorspace conversion
+                let is_data_pass = false;
+
                 Command::perform(
-                    RenderTask::convert_to_display_buffer(render_buffer, true),
+                    RenderTask::convert_to_display_buffer(render_buffer, is_data_pass),
                     Message::DisplayConversionTaskFinished,
                 )
             }

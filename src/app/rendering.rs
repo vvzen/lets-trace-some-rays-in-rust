@@ -96,6 +96,9 @@ impl RenderTask {
         // Sampling
         let mut rng = rand::thread_rng();
 
+        // Ray bounces
+        const MAX_DEPTH: i32 = 5;
+
         // Generate the image
         let mut index: usize = 0;
         for y in (0..RENDER_BUFFER_HEIGHT).rev() {
@@ -110,7 +113,7 @@ impl RenderTask {
 
                     // Aim the camera based on the current u,v coordinates
                     let ray = camera.get_ray_at_coords(u, v);
-                    pixel_color += ray_color(&ray, &scene);
+                    pixel_color += ray_color(&ray, &scene, MAX_DEPTH);
                 }
                 // Divide by the num of samples to get the average
                 let scale = 1.0 / NUM_SAMPLES_PER_PIXEL as f32;
