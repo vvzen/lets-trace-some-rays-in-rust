@@ -180,6 +180,8 @@ impl Camera {
 /// Given a Ray and a Scene of objects, return the color
 /// resulting with the Ray intersecting the Scene
 pub fn ray_color(ray: &Ray, scene: &Scene, max_depth: i32) -> Color {
+    // Offset the min a bit from 0 to avoid self-intersections caused
+    // by rounding floating point conversions
     let t_min = 0.001;
     let t_max = f32::INFINITY;
 
