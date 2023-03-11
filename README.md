@@ -19,6 +19,8 @@ Current features:
 
 - 3D: Normals rendering and antialiasing of a simple Sphere (so chapter 8 of RTiOW)
 
+- 3D: Rendering of a (pseudo) True Lambertian Reflection of a Sphere
+
 ## Things I want to do
 
 - Proper multithreaded rendering, based on the number of cores.
