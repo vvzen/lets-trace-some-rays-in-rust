@@ -1,5 +1,11 @@
+use std::sync::Arc;
+
 use glam::Vec3;
 use rand::distributions::{Distribution, Uniform};
+
+pub mod materials;
+
+use materials::Material;
 
 type Color = Vec3;
 
@@ -7,6 +13,7 @@ type Color = Vec3;
 pub struct HitData {
     hit_point: Vec3,
     normal: Vec3,
+    material: Arc<dyn Material>,
     t: f32,
 }
 
@@ -14,6 +21,9 @@ pub struct HitData {
 pub trait Hittable {
     fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData>;
 }
+
+// Scene and Geometry
+// ----------------------------------------------------------------------------
 
 pub struct Scene {
     pub elements: Vec<Box<dyn Hittable>>,
@@ -67,11 +77,16 @@ fn get_face_normal(ray: &Ray, outward_normal: Vec3) -> (Vec3, bool) {
 pub struct Sphere {
     pub radius: f32,
     pub center: Vec3,
+    pub material: Arc<dyn Material>,
 }
 
 impl Sphere {
-    pub fn new(radius: f32, center: Vec3) -> Self {
-        Sphere { radius, center }
+    pub fn new(radius: f32, center: Vec3, material: Arc<dyn Material>) -> Self {
+        Sphere {
+            radius,
+            center,
+            material,
+        }
     }
 }
 
@@ -120,10 +135,12 @@ impl Hittable for Sphere {
             t,
             hit_point,
             normal,
+            material: self.material.clone(),
         })
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Ray {
     pub origin: Vec3,
     pub direction: Vec3,
@@ -200,16 +217,22 @@ pub fn ray_color(ray: &Ray, scene: &Scene, max_depth: i32) -> Color {
                 }
             };
 
-            // Scatter a new ray in a random direction, but based
-            // on the Normal of the object that we have just hit
-            let random_point_in_sphere = random_in_hemisphere(object.normal);
-            let target = object.hit_point + random_point_in_sphere;
-            let new_ray = Ray::new(object.hit_point, target - object.hit_point);
+            // Scatter the ray in the material of the object hit
+            let scatter_result = object.material.scatter(&ray, &object);
+            match scatter_result {
+                Some((color, new_ray)) => {
+                    // Shoot more rays to simulate ray bounces after scattering
+                    // in the current material
+                    let mut pixel_color = color.clone();
+                    pixel_color *= ray_color(&new_ray, &scene, new_max_depth);
 
-            let mut pixel_color = Vec3::new(0.5, 0.5, 0.5);
-            pixel_color *= ray_color(&new_ray, &scene, new_max_depth);
-
-            return Color::new(pixel_color.x, pixel_color.y, pixel_color.z);
+                    return pixel_color.clone();
+                }
+                None => {
+                    // No more scattering, the ray was absorbed: turn it darker
+                    return Color::new(0.0, 0.0, 0.0);
+                }
+            }
         }
         None => {}
     }
@@ -232,6 +255,9 @@ fn get_background_color(ray: &Ray) -> Color {
 
     Color::new(color.x, color.y, color.z)
 }
+
+// Utility functions
+// ----------------------------------------------------------------------------
 
 /// Linear remap a value in one range into another range (no clamping)
 pub fn fit_range(x: f32, imin: f32, imax: f32, omin: f32, omax: f32) -> f32 {
@@ -268,4 +294,16 @@ fn random_in_hemisphere(normal: Vec3) -> Vec3 {
     } else {
         return -in_unit_sphere;
     }
+}
+
+/// Returns whether or not the given ``vec`` is close enough to zero
+/// on this machine (uses f32::EPSILON as the 'clone enough' measure).
+fn near_zero(vec: &Vec3) -> bool {
+    vec.x.abs() <= f32::EPSILON && vec.y.abs() <= f32::EPSILON.abs() && vec.z <= f32::EPSILON
+}
+
+/// Given a vector ``vec`` and a normalized vector ``normal``,
+/// return back ``vec`` reflected against ``normal``.
+fn reflect(vec: Vec3, normal: Vec3) -> Vec3 {
+    vec - 2.0 * vec.dot(normal) * normal
 }
