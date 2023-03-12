@@ -17,14 +17,16 @@ Current features:
 
 - 3D: Rendering happens in the background via async tasks, thanks to the iced Command API
 
-- 3D: Normals rendering and antialiasing of a simple Sphere (so chapter 8 of RTiOW)
+- 3D: Antialiasing (by shooting and averaging multiple rays per pixel)
 
-- 3D: Rendering of a (pseudo) True Lambertian Reflection of a Sphere
+- 3D: Metallic and Lambertian-like rendering of spheres
 
 ## Things I want to do
 
 - Proper multithreaded rendering, based on the number of cores.
   - Could happen via [rayon](https://crates.io/crates/rayon), or via a bespoke solution.
+  
+- IPR: Continuosly update the render buffer, starting from low res render and increasing resolution and number of samples every iteration
 
 ## Things I have learned so far
 
