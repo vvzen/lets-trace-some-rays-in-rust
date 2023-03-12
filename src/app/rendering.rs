@@ -1,10 +1,10 @@
 use std::boxed::Box;
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow;
 use exr::prelude::{AnyChannel, AnyChannels, Encoding, FlatSamples, Image, Layer, LayerAttributes};
 use glam::Vec3;
-use iced::futures;
 use rand::Rng;
 use smallvec::smallvec;
 
@@ -17,6 +17,7 @@ use crate::app::AppError;
 use crate::constants::{
     NUM_SAMPLES_PER_PIXEL, RENDER_BUFFER_HEIGHT, RENDER_BUFFER_SIZE, RENDER_BUFFER_WIDTH,
 };
+use crate::ltsr::materials::{Lambertian, Metallic};
 use crate::ltsr::{fit_range, ray_color, Camera, Scene, Sphere};
 
 pub type SimpleOpenEXRImage = Image<Layer<AnyChannels<FlatSamples>>>;
@@ -85,13 +86,29 @@ impl RenderTask {
         // Scene properties
         let mut scene = Scene::new();
 
+        // Materials
+        let col_ground = Vec3::new(0.8, 0.8, 0.1);
+        let col_center = Vec3::new(0.7, 0.3, 0.3);
+        let col_left = Vec3::new(0.8, 0.8, 0.8);
+        let col_right = Vec3::new(0.8, 0.6, 0.2);
+
+        let mat_ground = Arc::new(Lambertian::new(col_ground.clone()));
+        let mat_center = Arc::new(Lambertian::new(col_center.clone()));
+        let mat_left = Arc::new(Metallic::new(col_left.clone(), 0.3));
+        let mat_right = Arc::new(Metallic::new(col_right.clone(), 1.0));
+
         // Let's check if our ray intersects some spheres
         let spheres_z = -1.0;
-        let sphere = Sphere::new(0.5, Vec3::new(0.0, 0.0, spheres_z));
-        let sphere_2 = Sphere::new(100.0, Vec3::new(0.0, -100.5, spheres_z));
+        let spheres_z = -1.0;
+        let sphere_1 = Sphere::new(100.0, Vec3::new(0.0, -100.5, spheres_z), mat_ground.clone());
+        let sphere_2 = Sphere::new(0.5, Vec3::new(0.0, 0.0, spheres_z), mat_center.clone());
+        let sphere_3 = Sphere::new(0.5, Vec3::new(-1.0, 0.0, spheres_z), mat_left.clone());
+        let sphere_4 = Sphere::new(0.5, Vec3::new(1.0, 0.0, spheres_z), mat_right.clone());
 
-        scene.add_hittable(Box::new(sphere));
+        scene.add_hittable(Box::new(sphere_1));
         scene.add_hittable(Box::new(sphere_2));
+        scene.add_hittable(Box::new(sphere_3));
+        scene.add_hittable(Box::new(sphere_4));
 
         // Sampling
         let mut rng = rand::thread_rng();
